@@ -7,6 +7,7 @@ Please refer to
 import json
 import numpy
 import sys, os
+from flask import Flask, request
 
 
 from instrupy.synthetic_aperture_radar_model import SyntheticApertureRadarModel
@@ -155,12 +156,12 @@ sar3_dict = {   "@type": "Synthetic Aperture Radar",
                     "convention": "SIDE_LOOK",
                     "sideLookAngle": 45
                 },
-                "pulseWidth": 22.14e-6,
-                "antenna":{"shape": "RECTANGULAR", "height": 9.8, "width": 9.04, 
+                "pulseWidth": 1.48e-6,
+                "antenna":{"shape": "RECTANGULAR", "height": 3.63, "width": 10.67, 
                     "apertureEfficiency": 0.6, "apertureExcitationProfile": "UNIFORM"},
                 "operatingFrequency": 435e6, 
                 "peakTransmitPower": 1000, 
-                "chirpBandwidth": 6e6,      
+                "chirpBandwidth": 682958,      
                 "minimumPRF": 1, 
                 "maximumPRF": 20000, 
                 "radarLoss": 2, 
@@ -199,3 +200,74 @@ obsv_metrics = sar3.calc_data_metrics(alt_km=h*1e-3, sc_speed_kmps=orb_speed*1e-
 print(obsv_metrics)
 N_looks = 1e6 / (obsv_metrics["ground pixel along-track resolution [m]"] * obsv_metrics["ground pixel cross-track resolution [m]"]) 
 print('Speckle noise improvement is {} decibels'.format(10*numpy.log10(1/numpy.sqrt(N_looks))))
+
+
+
+def evaluate_sar(pulseWidth, height, width, chirpBW):
+    custom_sar_dict = {"@type": "Synthetic Aperture Radar",
+                       "name": "P-Band SAR",
+                       "orientation": {
+                           "referenceFrame": "SC_BODY_FIXED",
+                           "convention": "SIDE_LOOK",
+                           "sideLookAngle": 45
+                       },
+                       "pulseWidth": float(pulseWidth),
+                       "antenna": {"shape": "RECTANGULAR", "height": height, "width": width,
+                                   "apertureEfficiency": 0.6, "apertureExcitationProfile": "UNIFORM"},
+                       "operatingFrequency": 1275.7e6,
+                       "peakTransmitPower": 1000,
+                       "chirpBandwidth": chirpBW,
+                       "minimumPRF": 1,
+                       "maximumPRF": 20000,
+                       "radarLoss": 2,
+                       "systemNoiseFigure": 2,
+                       "swathConfig": {
+                            "@type": "fixed",
+                            "fixedSwathSize": 25
+                        },
+                        "polarization": {
+                            "@type": "dual",
+                            "pulseConfig": {
+                                "@type": "SMAP"   
+                        }
+                        }
+                       }
+    custom_sar = SyntheticApertureRadarModel.from_dict(custom_sar_dict)
+    inc_deg = 35
+    obsv_metrics1 = custom_sar.calc_data_metrics(alt_km=h * 1e-3, sc_speed_kmps=orb_speed * 1e-3,
+                                                 sc_gnd_speed_kmps=gnd_spd * 1e-3, inc_angle_deg=inc_deg,
+                                                 instru_look_angle_from_target_inc_angle=True)
+    inc_deg = 45
+    obsv_metrics2 = custom_sar.calc_data_metrics(alt_km=h * 1e-3, sc_speed_kmps=orb_speed * 1e-3,
+                                                 sc_gnd_speed_kmps=gnd_spd * 1e-3, inc_angle_deg=inc_deg,
+                                                 instru_look_angle_from_target_inc_angle=True)
+    inc_deg = 55
+    obsv_metrics3 = custom_sar.calc_data_metrics(alt_km=h * 1e-3, sc_speed_kmps=orb_speed * 1e-3,
+                                                 sc_gnd_speed_kmps=gnd_spd * 1e-3, inc_angle_deg=inc_deg,
+                                                 instru_look_angle_from_target_inc_angle=True)
+    if numpy.isnan(obsv_metrics1["ground pixel cross-track resolution [m]"]) or numpy.isnan(
+            obsv_metrics2["ground pixel cross-track resolution [m]"]) or numpy.isnan(
+            obsv_metrics3["ground pixel cross-track resolution [m]"]):
+        obsv_metrics = "radar design not valid"
+    else:
+        obsv_metrics = obsv_metrics3
+    return obsv_metrics
+
+app = Flask(__name__)
+
+@app.route('/', methods=['GET','POST'])
+def index():
+	if request.method == 'POST':
+		print(request.values)
+		pw = request.form.get("pulseWidth")
+		h = request.form.get("height")
+		w = request.form.get("width")
+		cbw = request.form.get("chirpBW")
+		metrics = evaluate_sar(pw,h,w,cbw)
+		print(metrics)
+		return metrics
+	else:
+		return "hello world"
+
+if __name__ == '__main__':
+	app.run(port='5000')

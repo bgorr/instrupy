@@ -51,8 +51,8 @@ from instrupy.synthetic_aperture_radar_model import SyntheticApertureRadarModel
 
 Re = 6378.137e3 # [m]
 c = 299792458 # m/s
-h = 350e3 # [m]
-inc = [30, 45, 60] # [deg]
+h = 500e3 # [m]
+inc = [35, 45, 55] # [deg]
 orb_speed = np.sqrt(3.986004418e14/(Re + h)) # [m/s]
 
 out_dir = os.path.dirname(os.path.realpath(__file__)) + '/moo_results/'
@@ -67,10 +67,10 @@ class MyProblem(Problem):
     """
     def __init__(self):
         super().__init__(n_var=4,
-                         n_obj=4,
+                         n_obj=3,
                          n_constr=1,
-                         xl=np.array([0.5, 0.5, 0.1, 1]),
-                         xu=np.array([15, 5, 40, 1000]),
+                         xl=np.array([0.1, 0.1, 1, 1]),
+                         xu=np.array([15, 15, 40, 1000]),
                          elementwise_evaluation=True)
 
     @staticmethod
@@ -78,8 +78,9 @@ class MyProblem(Problem):
 
         test_sar = SyntheticApertureRadarModel.from_json(   '{"@type": "Synthetic Aperture Radar",'
                                                             '"orientation": {'
+                                                            '    "referenceFrame": "SC_BODY_FIXED",'
                                                             '    "convention": "SIDE_LOOK",'
-                                                            '    "sideLookAngle": 55.21888' # not of significance in this problem
+                                                            '    "sideLookAngle": 45' # not of significance in this problem
                                                             '},'
                                                             '"pulseWidth":'+ str(pulse_w_us*1e-6) +','
                                                             '"antenna":{"shape": "RECTANGULAR", "height":'+ str(daz_m) +',"width":'+ str(delv_m) +',' 
@@ -92,7 +93,8 @@ class MyProblem(Problem):
                                                             '"radarLoss": 2,' 
                                                             '"systemNoiseFigure": 2,'
                                                             '"swathConfig": {'
-                                                            '   "@type": "full"'
+                                                            '   "@type": "fixed",'
+                                                            '   "fixedSwathSize": 25'
                                                             '},'
                                                             '"polarization": {'
                                                             '   "@type": "dual",'
@@ -130,43 +132,40 @@ class MyProblem(Problem):
         f1 = 1e9
         f2 = 1e9
         f3 = 1e9
-        f4 = 1e9
             
         if(obsv_metrics_1["NESZ [dB]"] and obsv_metrics_2["NESZ [dB]"] and obsv_metrics_3["NESZ [dB]"] ):
 
             if not np.isnan(obsv_metrics_1["NESZ [dB]"]) and not np.isnan(obsv_metrics_2["NESZ [dB]"]) and not np.isnan(obsv_metrics_3["NESZ [dB]"]):
             
                 # Include below condition in case of fixed-swath configuration. If this condition is not true it means that the illuminated swath size < the fixed swath size
-                # if(obsv_metrics_1["swath-width [km]"] == 25 and obsv_metrics_2["swath-width [km]"] == 25 and obsv_metrics_3["swath-width [km]"] == 25):
+                if(obsv_metrics_1["swath-width [km]"] == 25 and obsv_metrics_2["swath-width [km]"] == 25 and obsv_metrics_3["swath-width [km]"] == 25):
                     
-                # valid observation point
-                g1 = -1
+                    # valid observation point
+                    g1 = -1
 
-                f1 = daz_m * delv_m
-                f2 = -1 * obsv_metrics_3["swath-width [km]"]
-                f3 = obsv_metrics_3["NESZ [dB]"]
-
-                N_looks = 1e6 / (obsv_metrics_3["ground pixel along-track resolution [m]"] * obsv_metrics_3["ground pixel cross-track resolution [m]"])
-                f4 = 10*np.log10(1/np.sqrt(N_looks))
-                #print(f1,f2,f3,f4)
+                    f1 = obsv_metrics_3["NESZ [dB]"]
+                    f2 = obsv_metrics_3["ground pixel along-track resolution [m]"]
+                    N_looks = 1e6 / (obsv_metrics_3["ground pixel along-track resolution [m]"] * obsv_metrics_3["ground pixel cross-track resolution [m]"])
+                    f3 = -N_looks
+                    #print(f1,f2,f3,f4)
             
 
 
 
-        out["F"] = np.column_stack([f1, f2, f3, f4])
+        out["F"] = np.column_stack([f1, f2, f3])
         out["G"] = np.column_stack([g1])
 
 problem = MyProblem()
 
 algorithm = NSGA2(
-    pop_size=1000,
+    pop_size=48,
     sampling=get_sampling("real_random"),
     crossover=get_crossover("real_sbx", prob=0.9, eta=20),
     mutation=get_mutation("real_pm", eta=20),
     eliminate_duplicates=True
 )
 
-termination = get_termination("n_gen", 100)
+termination = get_termination("n_eval", 4800)
 
 res = minimize(problem,
                algorithm,
@@ -180,8 +179,8 @@ res = minimize(problem,
 
 # Save Pareto curve as csv file
 import pandas as pd 
-df = pd.DataFrame({"Daz [m]" : res.X[:,0], "Delv [m]" : res.X[:,1], "Chirp BW [MHz]" : res.X[:,2], "Pulse width [us]" : res.X[:,3], "Antenna area [m2]" : res.F[:,0], "Swath width [km]" : -1*res.F[:,1], "NESZ [dB]" : res.F[:,2], "Speckle reduction [dB]" : res.F[:,3]})
-df.to_csv(out_dir+"pareto_front.csv")
+df = pd.DataFrame({"Daz [m]" : res.X[:,0], "Delv [m]" : res.X[:,1], "Chirp BW [MHz]" : res.X[:,2], "Pulse width [us]" : res.X[:,3], "NESZ [dB]" : res.F[:,0], "along-track-res" : res.F[:,1], "N_looks" : res.F[:,2]})
+df.to_csv(out_dir+"pareto_front_030122.csv")
 
 # Plot Design Space
 # x1: Daz [m], x2: Delv [m], x3: Chirp BW [MHz], x4: Pulse width [us]
