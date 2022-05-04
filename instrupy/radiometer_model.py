@@ -1814,8 +1814,8 @@ class RadiometerModel(Entity):
         else:
             raise NotImplementedError
 
-        print('iFOV_AT_deg', iFOV_AT_deg)
-        print('iFOV_CT_deg', iFOV_CT_deg)
+        #print('iFOV_AT_deg', iFOV_AT_deg)
+        #print('iFOV_CT_deg', iFOV_CT_deg)
         res_AT_m = np.deg2rad(iFOV_AT_deg)*range_km*1.0e3
         res_CT_m = np.deg2rad(iFOV_CT_deg)*range_km*1.0e3/np.cos(incidence_angle)
         
@@ -1824,7 +1824,7 @@ class RadiometerModel(Entity):
         sat_speed_mps = gnd_spd
         td = self.scan.compute_dwell_time_per_ground_pixel(res_AT_m=res_AT_m, sat_speed_kmps=sat_speed_mps*1e-3, iFOV_CT_deg=iFOV_CT_deg)
 
-        print('td', td)
+        #print('td', td)
         rad_res = self.system.compute_radiometric_resolution(td, self.antenna, self.targetBrightnessTemp)
 
         ############## calculate beam-efficiency ##############
@@ -1834,7 +1834,6 @@ class RadiometerModel(Entity):
         # The swath-width is calculated based on the instrument look angle, which may or may-not be equal to the target look angle. 
         # If the instrument look-angle = target look angle, then it implies that the target is at the middle of the swath.
         instru_look_angle = 0.0
-                
         obsv_metrics = {}
         obsv_metrics["fov"] = iFOV_CT_deg if iFOV_CT_deg is not None else np.nan
         obsv_metrics["ground pixel along-track resolution [m]"] = round(res_AT_m, 2) if res_AT_m is not None else np.nan
